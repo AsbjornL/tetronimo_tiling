@@ -3,35 +3,68 @@
 using namespace std;
 
 #define HEIGHT 3
-#define SIZE 3
+#define SIZE 4
 
-typedef array<int, HEIGHT> state;
-typedef array<int, HEIGHT> spread;
+typedef array<array<bool, SIZE>, HEIGHT> state;
+
+const state nil = {};
 
 set<state> vis;
 map<state, vector<state>> dependencies;
 
-void combinations(int k, int i, spread cur, vector<spread> &result) {
+void combinations(int k, int i, int j, state cur, vector<state> &result) {
 	if (!k) {
 		result.push_back(cur);
 		return;
 	}
-	if (i < HEIGHT - 1) combinations(k, i+1, cur, result);
-	cur[i]++;
-	combinations(k-1, i, cur, result);
+	if (j == SIZE) {
+		combinations(k, i+1, 0, cur, result);
+		return;
+	}
+	if (i == HEIGHT) return;
+	combinations(k, i, j + 1, cur, result);
+	cur[i][j] = 1;
+	combinations(k-1, i, j + 1, cur, result);
 }
-void combinations(vector<spread> &result) { combinations(SIZE, 0, {0, 0, 0}, result); }
+void combinations(vector<state> &result) { combinations(SIZE, 0, 0, nil, result); }
 
 void reduce(state &s) {
-	int mn = 1<<30;
-	for (auto x : s) mn = min(mn, x);
-	for (auto &x : s) x -= mn;
-	for (int i = 0; i < HEIGHT / 2; i++) {
-		if (s[i] < s[HEIGHT - i - 1]) return;
-		break;
-	}
-	for (int i = 0; i < HEIGHT / 2; i++)
-		swap(s[i], s[HEIGHT - i - 1]);
+	int mn = SIZE;
+	for (int row = 0; row < HEIGHT; row++)
+		for (int cell = 0; cell < SIZE; cell++)
+			if (!s[row][cell])
+				mn = min(mn, cell);
+	for (int row = 0; row < HEIGHT; row++)
+		for (int cell = 0; cell < SIZE; cell++)
+			s[row][cell] = (cell + mn < SIZE ? s[row][cell + mn] : 0);
+	// Reduce symmetric states
+}
+
+int dx[] = {-1, 1, 0, 0};
+int dy[] = {0, 0, -1, 1};
+
+bool connected(state s) {
+	auto dfs = [&](auto &&self, int i, int j) -> int {
+		if (i < 0 || i >= HEIGHT || j < 0 || j >= SIZE) return 1;
+		if (!s[i][j]) return 1;
+		s[i][j] = 0;
+		for (int k = 0; k < 4; k++)
+			self(self, i + dx[k], j + dy[k]);
+		return 1;
+	};
+	int cnt = 0;
+	for (int i = 0; i < HEIGHT; i++)
+		for (int j = 0; j < SIZE; j++)
+			if (s[i][j])
+				cnt += dfs(dfs, i, j);
+	return cnt == 1;
+}
+
+state invert(state s) {
+	for (int i = 0; i < HEIGHT; i++)
+		for (int j = 0; j < SIZE; j++)
+			s[i][j] = !s[i][j];
+	return s;
 }
 
 void f(state cur) {
@@ -40,24 +73,22 @@ void f(state cur) {
 	vis.insert(cur);
 	int req = -1;
 	for (int i = HEIGHT - 1; ~i; i--)
-		if (!cur[i])
+		if (!cur[i][0])
 			req = i;
 	assert (~req);
-	vector<spread> combis;
+	vector<state> combis;
 	combinations(combis);
-	for (spread combi : combis) if (combi[req]) {
-		bool good = 1;
-		int flag = 0;
+	for (state combi : combis) if (combi[req][0]) {
+		if (!connected(combi)) continue;
 		state next = cur;
-		for (int i = 0; i < HEIGHT; i++) next[i] += combi[i];
-		for (int i = 0; i < HEIGHT; i++) {
-			if (flag == 0 && combi[i]) flag = 1;
-			else if (flag == 1 && !combi[i]) flag = 2;
-			else if (flag == 2 && combi[i]) good = 0;
-			if (!i || !combi[i] || !combi[i-1]) continue;
-			good &= next[i] > cur[i-1] && next[i-1] > cur[i];
-		}
-		if (!good) continue;
+		bool good = 1;
+		for (int i = 0; i < HEIGHT; i++)
+			for (int j = 0; j < SIZE; j++)
+				if (combi[i][j]) {
+					if (cur[i][j]) good = 0;
+					next[i][j] = 1;
+				}
+		if (!good || !connected(invert(next))) continue;
 		reduce(next);
 		dependencies[cur].push_back(next);
 		f(next);
@@ -67,11 +98,16 @@ void f(state cur) {
 int main() {
 	f({0, 0, 0});
 	for (auto [s, v] : dependencies) {
-		for (auto x : s) cout << x << ' ';
-		cout << ":\n";
+		for (auto row : s) {
+			for (auto x : row) cout << (x ? 'X' : '-');
+			cout << '\n';
+		}
 		for (auto t : v) {
-			cout << '\t';
-			for (auto x : t) cout << x << ' ';
+			for (auto row : t) {
+				cout << '\t';
+				for (auto x : row) cout << (x ? 'X' : '-');
+				cout << '\n';
+			}
 			cout << '\n';
 		}
 	}
