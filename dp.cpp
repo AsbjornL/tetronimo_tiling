@@ -36,6 +36,41 @@ matrix exp(matrix A, ll n) {
 	return B;
 }
 
+int matrix_rank(matrix& mat) {
+	// Thanks GPT!
+	int n = mat.n;
+	int m = mat.m;
+	auto vals = mat.vals; // Work on a copy to avoid modifying the original
+
+	int rank = 0;
+	for (int col = 0; col < m && rank < n; ++col) {
+		// Find pivot row
+		int pivot = rank;
+		while (pivot < n && vals[pivot][col] == 0)
+			++pivot;
+
+		if (pivot == n) continue; // No pivot in this column
+
+		// Swap current row with pivot row
+		std::swap(vals[rank], vals[pivot]);
+
+		// Eliminate below
+		for (int i = 0; i < n; ++i) {
+			if (i != rank && vals[i][col] != 0) {
+				int factor = vals[i][col];
+				int pivot_factor = vals[rank][col];
+				for (int j = col; j < m; ++j) {
+					vals[i][j] = vals[i][j] * pivot_factor - vals[rank][j] * factor;
+				}
+			}
+		}
+
+		++rank;
+	}
+
+	return rank;
+}
+
 const state nil = {};
 
 set<state> vis;
@@ -109,7 +144,6 @@ void f(state cur) {
 	reduce(cur);
 	if (vis.count(cur)) return;
 	vis.insert(cur);
-	cerr << vis.size() << endl;
 	int req = -1;
 	for (int i = 0; i < HEIGHT; i++)
 		if (!cur[i][0])
@@ -168,7 +202,7 @@ void print_matrix(matrix M) {
 int main() {
 	generate_combinations();
 	f(nil);
-	print_dependencies();
+	//print_dependencies();
 	array<map<state, int>, HEIGHT> groups;
 	array<int, HEIGHT> group_size = {};
 	for (auto s : vis) {
@@ -183,7 +217,8 @@ int main() {
 		for (auto [s, i] : groups[gr])
 			for (auto t : dependencies[s])
 				M.vals[i][groups[nxt][t]]++;
-		print_matrix(M); cout << '\n';
+		//cout << M.n << ' ' << matrix_rank(M) << '\n';
+		//print_matrix(M); cout << '\n';
 		if (!gr) acc = M;
 		else acc = mul(acc, M);
 		gr = nxt;
