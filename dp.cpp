@@ -5,40 +5,42 @@ using namespace std;
 #define HEIGHT 3
 #define SIZE 4
 
+typedef long long ll;
 typedef array<array<bool, SIZE>, HEIGHT> state;
+
+struct matrix{
+	int n, m;
+	vector<vector<int>> vals;
+	matrix(int _n, int _m) : n(_n), m(_m), vals(_n, vector<int>(_m, 0)) {}
+};
+
+constexpr const int MOD = 1e9 + 7;
+
+matrix mul(matrix A, matrix B) {
+	assert (A.m == B.n);
+	matrix C(A.n, B.m);
+	for (int i = 0; i < A.n; i++)
+		for (int j = 0; j < B.m; j++)
+			for (int k = 0; k < A.m; k++)
+				C.vals[i][j] = (C.vals[i][j] + (1LL * A.vals[i][k] * B.vals[k][j] % MOD)) % MOD;
+	return C;
+}
+
+matrix exp(matrix A, ll n) {
+	assert (A.n == A.m);
+	assert (n > 0);
+	if (n == 1) return A;
+	matrix B = exp(A, n / 2);
+	B = mul(B, B);
+	if (n & 1) B = mul(A, B);
+	return B;
+}
 
 const state nil = {};
 
 set<state> vis;
 map<state, vector<state>> dependencies;
-
-void combinations(int k, int i, int j, state cur, vector<state> &result) {
-	if (!k) {
-		result.push_back(cur);
-		return;
-	}
-	if (j == SIZE) {
-		combinations(k, i+1, 0, cur, result);
-		return;
-	}
-	if (i == HEIGHT) return;
-	combinations(k, i, j + 1, cur, result);
-	cur[i][j] = 1;
-	combinations(k-1, i, j + 1, cur, result);
-}
-void combinations(vector<state> &result) { combinations(SIZE, 0, 0, nil, result); }
-
-void reduce(state &s) {
-	int mn = SIZE;
-	for (int row = 0; row < HEIGHT; row++)
-		for (int cell = 0; cell < SIZE; cell++)
-			if (!s[row][cell])
-				mn = min(mn, cell);
-	for (int row = 0; row < HEIGHT; row++)
-		for (int cell = 0; cell < SIZE; cell++)
-			s[row][cell] = (cell + mn < SIZE ? s[row][cell + mn] : 0);
-	// Reduce symmetric states
-}
+array<vector<state>, HEIGHT> combinations;
 
 int dx[] = {-1, 1, 0, 0};
 int dy[] = {0, 0, -1, 1};
@@ -60,6 +62,42 @@ bool connected(state s) {
 	return cnt == 1;
 }
 
+void generate_combinations(int k, int i, int j, state cur) {
+	if (!k) {
+		if (connected(cur)) { for (int l = 0; l < HEIGHT; l++)
+				if (cur[l][0])
+					combinations[l].push_back(cur);
+		}
+		return;
+	}
+	if (j == SIZE) {
+		generate_combinations(k, i+1, 0, cur);
+		return;
+	}
+	if (i == HEIGHT) return;
+	generate_combinations(k, i, j + 1, cur);
+	cur[i][j] = 1;
+	generate_combinations(k-1, i, j + 1, cur);
+}
+void generate_combinations() { generate_combinations(SIZE, 0, 0, nil); }
+
+void reduce(state &s) {
+	int mn = SIZE;
+	for (int row = 0; row < HEIGHT; row++)
+		for (int cell = 0; cell < SIZE; cell++)
+			if (!s[row][cell])
+				mn = min(mn, cell);
+	for (int row = 0; row < HEIGHT; row++)
+		for (int cell = 0; cell < SIZE; cell++)
+			s[row][cell] = (cell + mn < SIZE ? s[row][cell + mn] : 0);
+	// Reduce symmetric states
+	for (int row = 0; row < HEIGHT / 2; row++)
+		for (int cell = 0; cell < SIZE; cell++)
+			if (s[row][cell] < s[HEIGHT - row - 1][cell]) return;
+	for (int row = 0; row < HEIGHT / 2; row++)
+		swap(s[row], s[HEIGHT - row - 1]);
+}
+
 state invert(state s) {
 	for (int i = 0; i < HEIGHT; i++)
 		for (int j = 0; j < SIZE; j++)
@@ -71,14 +109,13 @@ void f(state cur) {
 	reduce(cur);
 	if (vis.count(cur)) return;
 	vis.insert(cur);
+	cerr << vis.size() << endl;
 	int req = -1;
-	for (int i = HEIGHT - 1; ~i; i--)
+	for (int i = 0; i < HEIGHT; i++)
 		if (!cur[i][0])
 			req = i;
 	assert (~req);
-	vector<state> combis;
-	combinations(combis);
-	for (state combi : combis) if (combi[req][0]) {
+	for (state combi : combinations[req]) {
 		if (!connected(combi)) continue;
 		state next = cur;
 		bool good = 1;
@@ -88,15 +125,14 @@ void f(state cur) {
 					if (cur[i][j]) good = 0;
 					next[i][j] = 1;
 				}
-		if (!good || !connected(invert(next))) continue;
 		reduce(next);
+		if (!good || !connected(invert(next))) continue;
 		dependencies[cur].push_back(next);
 		f(next);
 	}
 }
 
-int main() {
-	f({0, 0, 0});
+void print_dependencies() {
 	for (auto [s, v] : dependencies) {
 		for (auto row : s) {
 			for (auto x : row) cout << (x ? 'X' : '-');
@@ -111,4 +147,46 @@ int main() {
 			cout << '\n';
 		}
 	}
+}
+
+int count (state s) {
+	int cnt = 0;
+	for (int i = 0; i < HEIGHT; i++)
+		for (int j = 0; j < SIZE; j++)
+			if (s[i][j])
+				cnt++;
+	return cnt;
+}
+
+void print_matrix(matrix M) {
+	for (auto row : M.vals) {
+		for (auto x : row) cout << x << ' ';
+		cout << '\n';
+	}
+}
+
+int main() {
+	generate_combinations();
+	f(nil);
+	print_dependencies();
+	array<map<state, int>, HEIGHT> groups;
+	array<int, HEIGHT> group_size = {};
+	for (auto s : vis) {
+		int gr = count(s) % HEIGHT;
+		groups[gr][s] = group_size[gr]++;
+	}
+	int gr = 0;
+	matrix acc(0, 0);
+	do {
+		int nxt = (gr + SIZE) % HEIGHT;
+		matrix M(group_size[gr], group_size[nxt]);
+		for (auto [s, i] : groups[gr])
+			for (auto t : dependencies[s])
+				M.vals[i][groups[nxt][t]]++;
+		print_matrix(M); cout << '\n';
+		if (!gr) acc = M;
+		else acc = mul(acc, M);
+		gr = nxt;
+	} while (gr);
+	print_matrix(acc); cout << '\n';
 }
