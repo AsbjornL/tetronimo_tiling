@@ -73,18 +73,22 @@ int matrix_rank(matrix& mat) {
 
 const state nil = {};
 
-set<state> vis;
+set<state> seen;
 map<state, vector<state>> dependencies;
-array<vector<state>, HEIGHT> combinations;
+array<set<state>, HEIGHT> combinations;
 
 int dx[] = {-1, 1, 0, 0};
 int dy[] = {0, 0, -1, 1};
 
 bool connected(state s) {
+	vector<vector<bool>> vis(HEIGHT, vector<bool>(SIZE + 1, 1));
+	for (int i = 0; i < HEIGHT; i++)
+		for (int j = 0; j < SIZE; j++)
+			vis[i][j] = s[i][j];
 	auto dfs = [&](auto &&self, int i, int j) -> int {
-		if (i < 0 || i >= HEIGHT || j < 0 || j >= SIZE) return 1;
-		if (!s[i][j]) return 1;
-		s[i][j] = 0;
+		if (i < 0 || i >= HEIGHT || j < 0 || j > SIZE) return 1;
+		if (!vis[i][j]) return 1;
+		vis[i][j] = 0;
 		for (int k = 0; k < 4; k++)
 			self(self, i + dx[k], j + dy[k]);
 		return 1;
@@ -92,29 +96,37 @@ bool connected(state s) {
 	int cnt = 0;
 	for (int i = 0; i < HEIGHT; i++)
 		for (int j = 0; j < SIZE; j++)
-			if (s[i][j])
+			if (vis[i][j])
 				cnt += dfs(dfs, i, j);
-	return cnt == 1;
+	return cnt <= 1;
 }
 
-void generate_combinations(int k, int i, int j, state cur) {
+void generate_combinations(int start, int k, state cur, set<pair<int, int>> edge) {
 	if (!k) {
-		if (connected(cur)) { for (int l = 0; l < HEIGHT; l++)
-				if (cur[l][0])
-					combinations[l].push_back(cur);
+		combinations[start].insert(cur);
+		return;
+	}
+	const set<pair<int, int>> it = edge;
+	for (auto [i, j] : it) {
+		edge.erase({i, j});
+		auto tmp = edge;
+		cur[i][j] = 1;
+		for (int l = 0; l < 4; l++) {
+			int x = i + dx[l], y = j + dy[l];
+			if (x < 0 || x >= HEIGHT || y < 0 || y >= SIZE || cur[x][y]) continue;
+			tmp.insert({x, y});
 		}
-		return;
+		generate_combinations(start, k-1, cur, tmp);
+		cur[i][j] = 0;
 	}
-	if (j == SIZE) {
-		generate_combinations(k, i+1, 0, cur);
-		return;
-	}
-	if (i == HEIGHT) return;
-	generate_combinations(k, i, j + 1, cur);
-	cur[i][j] = 1;
-	generate_combinations(k-1, i, j + 1, cur);
 }
-void generate_combinations() { generate_combinations(SIZE, 0, 0, nil); }
+void generate_combinations() {
+	for (int i = 0; i < HEIGHT; i++) {
+		set<pair<int, int>> edge;
+		edge.insert({i, 0});
+		generate_combinations(i, SIZE, nil, edge);
+	}
+}
 
 void reduce(state &s) {
 	int mn = SIZE;
@@ -142,15 +154,14 @@ state invert(state s) {
 
 void f(state cur) {
 	reduce(cur);
-	if (vis.count(cur)) return;
-	vis.insert(cur);
+	if (seen.count(cur)) return;
+	seen.insert(cur);
 	int req = -1;
 	for (int i = 0; i < HEIGHT; i++)
 		if (!cur[i][0])
 			req = i;
 	assert (~req);
 	for (state combi : combinations[req]) {
-		if (!connected(combi)) continue;
 		state next = cur;
 		bool good = 1;
 		for (int i = 0; i < HEIGHT; i++)
@@ -163,6 +174,13 @@ void f(state cur) {
 		if (!good || !connected(invert(next))) continue;
 		dependencies[cur].push_back(next);
 		f(next);
+	}
+}
+
+void print_state(state s) {
+	for (auto row : s) {
+		for (auto x : row) cout << (x ? 'X' : '-');
+		cout << '\n';
 	}
 }
 
@@ -183,7 +201,7 @@ void print_dependencies() {
 	}
 }
 
-int count (state s) {
+int count(state s) {
 	int cnt = 0;
 	for (int i = 0; i < HEIGHT; i++)
 		for (int j = 0; j < SIZE; j++)
@@ -199,16 +217,33 @@ void print_matrix(matrix M) {
 	}
 }
 
+void print_dependency_lists(array<map<state, int>, HEIGHT> groups, array<int, HEIGHT> group_size) {
+	int gr = 0;
+	do {
+		int nxt = (gr + SIZE) % HEIGHT;
+		for (auto [s, i] : groups[gr]) {
+			print_state(s);
+			cout << i << ':';
+			for (auto t : dependencies[s])
+				cout << ' ' << groups[nxt][t];
+			cout << '\n';
+		}
+		cout << '\n';
+		gr = nxt;
+	} while (gr);
+}
+
 int main() {
 	generate_combinations();
 	f(nil);
 	//print_dependencies();
 	array<map<state, int>, HEIGHT> groups;
 	array<int, HEIGHT> group_size = {};
-	for (auto s : vis) {
+	for (auto s : seen) {
 		int gr = count(s) % HEIGHT;
 		groups[gr][s] = group_size[gr]++;
 	}
+	//print_dependency_lists(groups, group_size);
 	int gr = 0;
 	matrix acc(0, 0);
 	do {
@@ -223,5 +258,5 @@ int main() {
 		else acc = mul(acc, M);
 		gr = nxt;
 	} while (gr);
-	print_matrix(acc); cout << '\n';
+	//print_matrix(acc); cout << '\n';
 }
